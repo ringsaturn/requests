@@ -28,13 +28,14 @@ func QueryOption(query map[string]string) RequestOption {
 	}
 }
 
-func Req(
+// Build combine request params
+func Build(
 	ctx context.Context,
 	client *http.Client,
 	method string,
 	url string, body io.Reader,
 	options ...RequestOption,
-) (*http.Response, error) {
+) (*http.Request, error) {
 	req, err := http.NewRequestWithContext(ctx, method, url, body)
 	if err != nil {
 		return nil, err
@@ -42,14 +43,34 @@ func Req(
 	for _, option := range options {
 		option(req)
 	}
-	return client.Do(req)
+	return req, nil
 }
 
-func ReqWithExpectJSONResponse(
+// Req will do HTTP request
+func Req(
 	ctx context.Context,
 	client *http.Client,
 	method string,
-	url string, body io.Reader, expect interface{},
+	url string, body io.Reader,
+	options ...RequestOption,
+) (*http.Response, error) {
+	req, err := Build(ctx, client, method, url, body, options...)
+	if err != nil {
+		return nil, err
+	}
+	return client.Do(req)
+}
+
+// UnmarshalFunc is type define for any unmarshall funct
+type UnmarshalFunc func(data []byte, v interface{}) error
+
+// ReqWithCustomUnmarshal will use input func to unmarshall response
+func ReqWithCustomUnmarshal(
+	ctx context.Context,
+	client *http.Client,
+	method string,
+	url string, body io.Reader,
+	unmarshalFunc UnmarshalFunc, expect interface{},
 	options ...RequestOption,
 ) error {
 	resp, err := Req(ctx, client, method, url, body, options...)
@@ -62,6 +83,17 @@ func ReqWithExpectJSONResponse(
 	if err != nil {
 		return err
 	}
+	return unmarshalFunc(respBody, expect)
+}
 
-	return json.Unmarshal(respBody, expect)
+// ReqWithExpectJSONResponse use json.Unmarshal to unmarshall response
+func ReqWithExpectJSONResponse(
+	ctx context.Context,
+	client *http.Client,
+	method string,
+	url string, body io.Reader,
+	expect interface{},
+	options ...RequestOption,
+) error {
+	return ReqWithCustomUnmarshal(ctx, client, method, url, body, json.Unmarshal, expect, options...)
 }
